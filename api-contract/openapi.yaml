@@ -1,0 +1,1735 @@
+openapi: 3.0.3
+info:
+  title: Communication_LTD Ticket System API
+  description: |
+    API for Communication_LTD customer support ticket system
+    
+    ## Logging Requirements
+    
+    - All successful mutating operations (POST, PUT, PATCH, DELETE) with valid CSRF tokens are logged at INFO level
+    - Missing or invalid CSRF tokens are logged at WARNING level
+    - Requests approaching rate limit thresholds are logged at WARNING level
+    - All requests include client IP, user ID (if authenticated), timestamp, and operation details
+    
+    ## Rate Limiting
+    
+    The API implements rate limiting to protect against abuse:
+    - Authentication endpoints: 10 requests per minute per IP
+    - Standard endpoints: 60 requests per minute per authenticated user
+    - Admin endpoints: 30 requests per minute per admin user
+    
+    When requests approach 80% of their limit threshold, WARNING level logs are generated
+  version: 1.0.0
+  contact:
+    name: Communication_LTD Support
+
+servers:
+  - url: /api/v1
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  
+  parameters:
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      description: >
+        CSRF token for mutation requests protection.
+        All POST, PUT, PATCH, DELETE operations require this header.
+        Missing or invalid tokens will be logged at WARNING level.
+        Valid tokens on successful mutating requests will be logged at INFO level.
+      required: true
+      schema:
+        type: string
+  
+  responses:
+    CSRFError:
+      description: CSRF validation error. This is logged at WARNING level.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 403
+            message: "CSRF token validation failed"
+            details:
+              reason: "Missing or invalid CSRF token"
+    
+    RateLimitWarning:
+      description: Rate limit threshold approaching warning. This is logged at WARNING level.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 429
+            message: "Rate limit threshold approaching"
+            details:
+              limit: 60
+              current: 48
+              reset_at: "2025-08-11T10:15:00Z"
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP status code
+        message:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details
+      required:
+        - code
+        - message
+      example:
+        code: 400
+        message: Bad Request
+        details:
+          field: "username"
+          reason: "Username is already taken"
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, support, customer]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+        account_locked:
+          type: boolean
+          default: false
+      required:
+        - id
+        - username
+        - email
+        - role
+        - created_at
+        - updated_at
+        - account_locked
+      example:
+        id: 1
+        username: "john_doe"
+        email: "john.doe@example.com"
+        role: "customer"
+        created_at: "2025-08-01T10:00:00Z"
+        updated_at: "2025-08-01T10:00:00Z"
+        last_login: "2025-08-10T15:30:00Z"
+        account_locked: false
+
+    UserCreate:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 4
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 10
+        role:
+          type: string
+          enum: [admin, support, customer]
+      required:
+        - username
+        - email
+        - password
+        - role
+      example:
+        username: "john_doe"
+        email: "john.doe@example.com"
+        password: "SecureP@ssw0rd123"
+        role: "customer"
+
+    UserLogin:
+      type: object
+      properties:
+        username_or_email:
+          type: string
+        password:
+          type: string
+          format: password
+      required:
+        - username_or_email
+        - password
+      example:
+        username_or_email: "john.doe@example.com"
+        password: "SecureP@ssw0rd123"
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: "bearer"
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      example:
+        access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type: "bearer"
+        expires_in: 3600
+
+    PasswordReset:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+        - email
+      example:
+        email: "john.doe@example.com"
+
+    PasswordResetConfirm:
+      type: object
+      properties:
+        token:
+          type: string
+        new_password:
+          type: string
+          format: password
+          minLength: 10
+      required:
+        - token
+        - new_password
+      example:
+        token: "reset-token-123456"
+        new_password: "NewSecureP@ssw0rd123"
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone_number:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        postal_code:
+          type: string
+        country:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - first_name
+        - last_name
+        - phone_number
+        - created_at
+        - updated_at
+      example:
+        id: 1
+        user_id: 1
+        first_name: "John"
+        last_name: "Doe"
+        phone_number: "+1-555-123-4567"
+        address: "123 Main St"
+        city: "Springfield"
+        postal_code: "12345"
+        country: "USA"
+        created_at: "2025-08-01T10:00:00Z"
+        updated_at: "2025-08-01T10:00:00Z"
+
+    CustomerCreate:
+      type: object
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        phone_number:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        postal_code:
+          type: string
+        country:
+          type: string
+      required:
+        - first_name
+        - last_name
+        - phone_number
+      example:
+        first_name: "John"
+        last_name: "Doe"
+        phone_number: "+1-555-123-4567"
+        address: "123 Main St"
+        city: "Springfield"
+        postal_code: "12345"
+        country: "USA"
+
+    Package:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+        features:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - price
+        - created_at
+        - updated_at
+      example:
+        id: 1
+        name: "Basic Internet"
+        description: "Basic internet package for home use"
+        price: 29.99
+        features:
+          - "50Mbps download speed"
+          - "10Mbps upload speed"
+          - "Unlimited data"
+        created_at: "2025-08-01T10:00:00Z"
+        updated_at: "2025-08-01T10:00:00Z"
+
+    PackageCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+          format: float
+        features:
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - price
+      example:
+        name: "Basic Internet"
+        description: "Basic internet package for home use"
+        price: 29.99
+        features:
+          - "50Mbps download speed"
+          - "10Mbps upload speed"
+          - "Unlimited data"
+
+    CustomerPackage:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        customer_id:
+          type: integer
+          format: int64
+        package_id:
+          type: integer
+          format: int64
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [active, expired, cancelled]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - customer_id
+        - package_id
+        - start_date
+        - status
+        - created_at
+        - updated_at
+      example:
+        id: 1
+        customer_id: 1
+        package_id: 1
+        start_date: "2025-08-01"
+        end_date: "2026-08-01"
+        status: "active"
+        created_at: "2025-08-01T10:00:00Z"
+        updated_at: "2025-08-01T10:00:00Z"
+
+    CustomerPackageCreate:
+      type: object
+      properties:
+        package_id:
+          type: integer
+          format: int64
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [active, expired, cancelled]
+          default: active
+      required:
+        - package_id
+        - start_date
+      example:
+        package_id: 1
+        start_date: "2025-08-01"
+        end_date: "2026-08-01"
+        status: "active"
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        customer_id:
+          type: integer
+          format: int64
+        assigned_to:
+          type: integer
+          format: int64
+          nullable: true
+        subject:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [new, in_progress, on_hold, resolved, closed]
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+        category:
+          type: string
+          enum: [billing, technical, account, other]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - customer_id
+        - subject
+        - description
+        - status
+        - priority
+        - category
+        - created_at
+        - updated_at
+      example:
+        id: 1
+        customer_id: 1
+        assigned_to: 2
+        subject: "Internet connection issue"
+        description: "My internet connection has been unstable for the past 2 days."
+        status: "new"
+        priority: "high"
+        category: "technical"
+        created_at: "2025-08-10T14:30:00Z"
+        updated_at: "2025-08-10T14:30:00Z"
+        closed_at: null
+
+    TicketCreate:
+      type: object
+      properties:
+        subject:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+          default: medium
+        category:
+          type: string
+          enum: [billing, technical, account, other]
+      required:
+        - subject
+        - description
+        - category
+      example:
+        subject: "Internet connection issue"
+        description: "My internet connection has been unstable for the past 2 days."
+        priority: "high"
+        category: "technical"
+
+    TicketUpdate:
+      type: object
+      properties:
+        assigned_to:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          type: string
+          enum: [new, in_progress, on_hold, resolved, closed]
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+      example:
+        assigned_to: 2
+        status: "in_progress"
+        priority: "high"
+
+    TicketComment:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        ticket_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - ticket_id
+        - user_id
+        - content
+        - created_at
+        - updated_at
+      example:
+        id: 1
+        ticket_id: 1
+        user_id: 2
+        content: "We're looking into this issue. Please provide more details about when the problem occurs."
+        created_at: "2025-08-10T15:00:00Z"
+        updated_at: "2025-08-10T15:00:00Z"
+
+    TicketCommentCreate:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+      example:
+        content: "We're looking into this issue. Please provide more details about when the problem occurs."
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+          nullable: true
+        action:
+          type: string
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+          format: int64
+          nullable: true
+        details:
+          type: object
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - action
+        - entity_type
+        - created_at
+      example:
+        id: 1
+        user_id: 1
+        action: "update"
+        entity_type: "ticket"
+        entity_id: 1
+        details:
+          status_changed: true
+          old_status: "new"
+          new_status: "in_progress"
+        ip_address: "192.168.1.1"
+        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        created_at: "2025-08-10T15:05:00Z"
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      operationId: registerUser
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      summary: Login to get access token
+      operationId: loginUser
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Account locked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/password-reset:
+    post:
+      summary: Request password reset
+      operationId: requestPasswordReset
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordReset'
+      responses:
+        '200':
+          description: Password reset email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Password reset instructions sent to your email"
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/password-reset/confirm:
+    post:
+      summary: Confirm password reset with token
+      operationId: confirmPasswordReset
+      tags:
+        - Authentication
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Password reset successful"
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Token not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/me:
+    get:
+      summary: Get current user information
+      operationId: getCurrentUser
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /customers:
+    get:
+      summary: List all customers
+      operationId: listCustomers
+      tags:
+        - Customers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search term for filtering customers
+      responses:
+        '200':
+          description: List of customers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Customer'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+                  limit:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new customer
+      operationId: createCustomer
+      tags:
+        - Customers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        '201':
+          description: Customer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /customers/{customer_id}:
+    parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      summary: Get customer details
+      operationId: getCustomer
+      tags:
+        - Customers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Customer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update customer details
+      operationId: updateCustomer
+      tags:
+        - Customers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a customer
+      operationId: deleteCustomer
+      tags:
+        - Customers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204':
+          description: Customer deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /customers/{customer_id}/packages:
+    parameters:
+      - name: customer_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      summary: Get customer's packages
+      operationId: getCustomerPackages
+      tags:
+        - Customers
+        - Packages
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of customer packages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerPackage'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Add a package to customer
+      operationId: addCustomerPackage
+      tags:
+        - Customers
+        - Packages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerPackageCreate'
+      responses:
+        '201':
+          description: Package added to customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerPackage'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Customer or package not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packages:
+    get:
+      summary: List all packages
+      operationId: listPackages
+      tags:
+        - Packages
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of packages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Package'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+                  limit:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new package
+      operationId: createPackage
+      tags:
+        - Packages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageCreate'
+      responses:
+        '201':
+          description: Package created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Package'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /packages/{package_id}:
+    parameters:
+      - name: package_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      summary: Get package details
+      operationId: getPackage
+      tags:
+        - Packages
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Package details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Package'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update package details
+      operationId: updatePackage
+      tags:
+        - Packages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageCreate'
+      responses:
+        '200':
+          description: Package updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Package'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a package
+      operationId: deletePackage
+      tags:
+        - Packages
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204':
+          description: Package deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Package not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tickets:
+    get:
+      summary: List tickets
+      operationId: listTickets
+      tags:
+        - Tickets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, in_progress, on_hold, resolved, closed]
+          description: Filter by ticket status
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high, urgent]
+          description: Filter by ticket priority
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [billing, technical, account, other]
+          description: Filter by ticket category
+        - name: customer_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by customer ID
+        - name: assigned_to
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by assigned user ID
+      responses:
+        '200':
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+                  limit:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new ticket
+      operationId: createTicket
+      tags:
+        - Tickets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketCreate'
+      responses:
+        '201':
+          description: Ticket created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tickets/{ticket_id}:
+    parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      summary: Get ticket details
+      operationId: getTicket
+      tags:
+        - Tickets
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      summary: Update ticket details
+      operationId: updateTicket
+      tags:
+        - Tickets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketUpdate'
+      responses:
+        '200':
+          description: Ticket updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a ticket
+      operationId: deleteTicket
+      tags:
+        - Tickets
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '204':
+          description: Ticket deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tickets/{ticket_id}/comments:
+    parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      summary: Get ticket comments
+      operationId: getTicketComments
+      tags:
+        - Tickets
+        - Comments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of ticket comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketComment'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Add comment to ticket
+      operationId: addTicketComment
+      tags:
+        - Tickets
+        - Comments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketCommentCreate'
+      responses:
+        '201':
+          description: Comment added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketComment'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ticket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /audit-logs:
+    get:
+      summary: Get audit logs
+      operationId: getAuditLogs
+      tags:
+        - Audit Logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by user ID
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action type
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+          description: Filter by entity type
+        - name: entity_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by entity ID
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter by start date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter by end date
+      responses:
+        '200':
+          description: List of audit log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogEntry'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+                  limit:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

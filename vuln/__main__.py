@@ -1,0 +1,7 @@
+from vuln.app import app
+
+if __name__ == "__main__":
+    # Default to port 5000 (single-run mode); use PORT env to override
+    import os
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=True)
